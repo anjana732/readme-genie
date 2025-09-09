@@ -2,12 +2,15 @@
 This main file will serve as the entry point for the backend and relays the request to the appropriate router to process it further.
 """
 from fastapi import FastAPI
-
+from user.user_routes import user_router
 app = FastAPI()
+app.include_router(user_router)
 
-@app.get("/")
-def read_root():
-    return {"Testing String" : "Hello World !!"}
+
+
+# @app.get("/")
+# def read_root():
+#     return {"Testing String" : "Hello World !!"}
 # Microservice for the user related operations (Login, Signup, Profile Management, etc.)
 # 1. Login Route
 # 2. Signup Route
