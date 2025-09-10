@@ -1,4 +1,7 @@
 import threading
+from sqlalchemy import create_engine
+from utils import handle_exception
+
 
 class DbConnection:
 
@@ -17,4 +20,28 @@ class DbConnection:
     def reset_db_connection(self, conn_string: str, db: str):
         connection = None
         connection_string = conn_string + "_" + db
-        connection_pool = getattr(self.thread_local, 'connection_pool', None)
+        connection_pool = getattr(self.thread_local, 'connection_pool', dict())
+        try:
+            if connection_string in connection_pool and connection_pool[connection_string] is not None:
+                connection_pool[connection_string].dispose()
+
+        except Exception as e:
+            handle_exception()
+
+        for _ in range(3):
+            try:
+                connection = create_engine(conn_string + db)
+                break
+            except Exception as e:
+                handle_exception()
+                connection = None
+                continue
+
+        if connection is not None:
+            connection_pool[connection_string] = connection
+            self.thread_local.connection_pool = connection_pool
+
+        return connection
+
+
+DB = DbConnection()
