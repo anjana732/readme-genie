@@ -1,5 +1,5 @@
 import re
-
+from utils import *
 
 class UserLogin:
     def __init__(self, body):
@@ -41,7 +41,15 @@ class UserLogin:
     def user_login_main_func(self):
         func_status = True
         is_success = False
+        message = None
         try:
+            qry = f"""SELECT * from readme_backend.users"""
+            params = ()
+            qry_status, df = get_data_from_db(qry, "readme_backend", params)
+            is_success = True
+
+            if not qry_status:
+                raise Exception("Error in fetching the user data, Please try again !!")
             check_mobile_func_status, mobile_match_status = self.is_mobile_number()
 
             if not check_mobile_func_status:
@@ -62,7 +70,8 @@ class UserLogin:
             func_status, is_success, message = self.user_email_login()
 
         except Exception as e:
-            message = e
+            handle_exception("user_login_main_func", sys.exc_info(), e)
             func_status = False
+            message = e
 
         return func_status, is_success, message

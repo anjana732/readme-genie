@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from .user_login_main import UserLogin
+from user.user_login_main import UserLogin
 
 
 class UserLoginModel(BaseModel):

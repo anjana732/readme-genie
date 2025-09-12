@@ -1,45 +1,52 @@
+import sys
 import threading
 from sqlalchemy import create_engine
-from utils import handle_exception
-
+from handle_exception import handle_exception
 
 class DbConnection:
-
     def __init__(self):
         self.thread_local = threading.local()
 
-    def get_connection(self, conn_string: str, db: str):
-        connection_pool = getattr(self.thread_local, 'connection_pool', None)
+    def get_connection(self, conn_string: str, db: str = ""):
+        if not hasattr(self.thread_local, 'connection_pool'):
+            self.thread_local.connection_pool = {}
+
+        connection_pool = self.thread_local.connection_pool
         connection_string = conn_string + "_" + db
-        if connection_string in connection_pool and connection_pool[connection_string] is not None:
-            return connection_pool[connection_string]
-        else:
-            rconn = self.reset_db_connection(conn_string, db)
-            return rconn
+
+        try:
+            if connection_string in connection_pool and connection_pool[connection_string] is not None:
+                return connection_pool[connection_string]
+            else:
+                return self.reset_db_connection(conn_string, db)
+        except Exception as e:
+            handle_exception("get_connection", sys.exc_info(), e)
 
     def reset_db_connection(self, conn_string: str, db: str):
-        connection = None
+        if not hasattr(self.thread_local, 'connection_pool'):
+            self.thread_local.connection_pool = {}
+
+        connection_pool = self.thread_local.connection_pool
         connection_string = conn_string + "_" + db
-        connection_pool = getattr(self.thread_local, 'connection_pool', dict())
+
         try:
             if connection_string in connection_pool and connection_pool[connection_string] is not None:
                 connection_pool[connection_string].dispose()
-
         except Exception as e:
-            handle_exception()
+            handle_exception("reset_db_connection", sys.exc_info(), e)
 
+        connection = None
         for _ in range(3):
             try:
-                connection = create_engine(conn_string + db)
+                connection = create_engine(conn_string)
                 break
             except Exception as e:
-                handle_exception()
+                handle_exception("reset_db_connection", sys.exc_info(), e)
                 connection = None
                 continue
 
         if connection is not None:
             connection_pool[connection_string] = connection
-            self.thread_local.connection_pool = connection_pool
 
         return connection
 
