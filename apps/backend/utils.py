@@ -1,8 +1,8 @@
 import sys
 import time
-
+from typing import Tuple, Any, Union
 import pandas as pd
-
+from sqlalchemy import text
 import config
 from config import DATABASE_URL
 from db_connection import DB
@@ -34,30 +34,20 @@ def get_data_from_db(query: str, db_name: str, params=None):
 
 
 # TODO : Need to update the insertion logic as this is very old one
-def insert_data_to_db(query: str, db_name: str, params=None) -> bool:
-    """
-    Insert/update/delete data into the database with retry mechanism.
-
-    :param query: SQL query to execute (INSERT/UPDATE/DELETE)
-    :param db_name: Database name
-    :param params: Optional parameters for parameterized query
-    :return: True if successful, False if failed
-    """
+def insert_data_to_db(query: str, db_name: str, params=None) -> Tuple[bool, Any]:
     db_connection_str = replacing_at_char_from_password(DATABASE_URL)
-
+      # returns Engine
+    auto_id = config.INVALID_LOG_ID
+    qry_status = False
     for _ in range(config.RETRY_TIMES):
         try:
-            db_connection = DB.get_connection(db_connection_str, db_name)
+            db_conn = DB.get_connection(db_connection_str, db_name)
+            with db_conn.begin() as connection:
+                result = connection.execute(text(query), params or {})
+                auto_id = result.lastrowid
 
-            with db_connection.cursor() as cursor:
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-
-                db_connection.commit()  # commit the transaction
-
-            return True
+            qry_status = True
+            break
 
         except Exception as e:
             logger.info("Error: Cannot execute insert/update query")
@@ -66,4 +56,5 @@ def insert_data_to_db(query: str, db_name: str, params=None) -> bool:
             DB.reset_db_connection(db_connection_str, db_name)
             continue
 
-    return False
+    return qry_status, auto_id
+

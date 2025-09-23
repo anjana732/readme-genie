@@ -10,8 +10,8 @@ class UserMobileLogin:
     def __init__(self, data):
         self.data = data
         self.mobile = data.get("mobile")
-        self.otp = None
-        self.user_id = None
+        self.otp = self.data.get("otp", None)
+        self.user_id = self.data.get("user_id", None)
 
     def check_existing_user(self):
         func_status = True
@@ -94,11 +94,18 @@ class UserMobileLogin:
         func_status = True
         try:
             expires_at = datetime.now() + timedelta(minutes=10)
-            qry = ("""INSERT INTO {0}.{1} 
+            qry = f"""
+            INSERT INTO {SCHEMA}.{OTP_TABLE}
             (user_id, otp, mobile_number, expires_at, is_used)
-            VALUES (%s, %s, %s, %s, %s);"""
-                   .format(SCHEMA, OTP_TABLE))
-            params = (self.user_id, self.otp, self.mobile, expires_at, 0)
+            VALUES (:user_id, :otp, :mobile, :expires_at, :is_used);
+            """
+            params = {
+                "user_id": self.user_id,
+                "otp": self.otp,
+                "mobile": self.mobile,
+                "expires_at": expires_at,
+                "is_used": 0
+            }
             qry_status, _ = insert_data_to_db(qry, SCHEMA, params)
             if not qry_status:
                 raise Exception("Error in storing OTP in DB")
@@ -114,6 +121,7 @@ class UserMobileLogin:
         is_success = False
         message = None
         is_existing_user = False
+        is_otp_sent = False
         try:
             func_status, is_existing_user = self.check_existing_user()
             if not func_status:
@@ -121,7 +129,7 @@ class UserMobileLogin:
 
             if not is_existing_user:
                 message = "User does not exist. Please sign up."
-                return func_status, is_existing_user, message
+                return func_status, is_existing_user, is_otp_sent, message
 
             # Generate and send OTP
             otp_generate_func_status = self.otp_generate()
@@ -147,4 +155,55 @@ class UserMobileLogin:
             func_status = False
             message = e
 
-        return func_status, is_existing_user, message
+        return func_status, is_existing_user, is_otp_sent, message
+
+    def check_otp(self):
+        func_status = True
+        is_otp_verified = False
+        try:
+            qry = """SELECT * FROM {0}.{1} where user_id = %s and otp = %s and is_used = 0 and expires_at > NOW() order by 1 desc limit 1""".format(SCHEMA, OTP_TABLE)
+            params = (self.user_id, self.otp,)
+            qry_status, otp_df = get_data_from_db(qry, SCHEMA, params)
+
+            if not qry_status:
+                raise Exception("Error in fetching OTP data from DB")
+
+            if otp_df.empty:
+                return func_status, is_otp_verified
+
+            # Mark OTP as used
+            otp_id = otp_df['otp_id'].values[0]
+            update_qry = f"UPDATE {SCHEMA}.{OTP_TABLE} SET is_used = 1 WHERE otp_id = :otp_id"
+            update_params = {"otp_id": otp_id}
+            update_status, _ = insert_data_to_db(update_qry, SCHEMA, update_params)
+            if not update_status:
+                raise Exception("Error in updating OTP status in DB")
+
+            is_otp_verified = True
+
+        except Exception as e:
+            handle_exception("check_otp", sys.exc_info(), e)
+            func_status = False
+
+        return func_status, is_otp_verified
+
+    def verify_otp(self):
+        is_otp_verified = False
+        func_status = True
+        message = None
+        try:
+            func_status, is_otp_verified = self.check_otp()
+            if not func_status:
+                raise Exception("OTP verification failed, Please try again !!")
+
+            if not is_otp_verified:
+                raise Exception("Invalid OTP, Please try again !!")
+
+            message = "OTP verified successfully."
+
+        except Exception as e:
+            handle_exception("verify_otp", sys.exc_info(), e)
+            func_status = False
+            message = str(e)
+
+        return func_status, is_otp_verified, message
